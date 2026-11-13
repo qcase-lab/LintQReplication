@@ -1,0 +1,16 @@
+docker run -v "${PWD}/data:/home/codeql/project/data" -it --rm lintq `
+    codeql database create data/datasets/demo/codeql_db `
+    --language=python `
+    --source-root data/datasets/demo/files
+
+docker run `
+    -v "${PWD}/data:/home/codeql/project/data" `
+    -v "${PWD}/LintQ.qls:/home/codeql/project/LintQ.qls" `
+    -it --rm lintq `
+    codeql database analyze `
+    --format=sarifv2.1.0 `
+    --threads=10 `
+    --output=/home/codeql/project/data/datasets/demo/my_results.sarif `
+    --rerun `
+    -- /home/codeql/project/data/datasets/demo/codeql_db `
+    /home/codeql/project/LintQ.qls
