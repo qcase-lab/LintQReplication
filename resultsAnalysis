@@ -1,118 +1,23 @@
-#!/usr/bin/env python3
-"""Summarize a LintQ / CodeQL SARIF report.
-
-import argparse
 import json
-import sys
-from collections import defaultdict
-from pathlib import Path
-
-
-def load_sarif(path):
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def collect_rules(run):
-    rules = {}
-    for rule in run["tool"]["driver"].get("rules", []):
-        rules[rule["id"]] = {
-            "name": rule.get("shortDescription", {}).get("text", rule["id"]),
-            "description": rule.get("fullDescription", {}).get("text", ""),
-            "severity": rule.get("defaultConfiguration", {}).get("level", "warning"),
-        }
-    return rules
-
-
-def collect_findings(run):
-    """Return deduplicated findings, skipping copies stored inside the CodeQL database."""
-    findings, seen = [], set()
-    for res in run.get("results", []):
-        loc = res["locations"][0]["physicalLocation"]
-        uri = loc["artifactLocation"]["uri"]
-        line = loc.get("region", {}).get("startLine")
-        message = res["message"]["text"]
-
-        # CodeQL archives a copy of each source file inside the database.
-        if "codeql_db/" in uri.replace("\\", "/"):
-            continue
-
-        key = (res["ruleId"], Path(uri).name, line, message)
-        if key in seen:
-            continue
-        seen.add(key)
-
-        findings.append(
-            {
-                "rule": res["ruleId"],
-                "file": uri,
-                "line": line,
-                "message": message,
-            }
-        )
-    return sorted(findings, key=lambda f: (f["file"], f["line"] or 0))
-
-
-def read_source_line(src_root, uri, line):
-    if not src_root or not line:
-        return None
-    candidate = Path(src_root) / uri
-    if not candidate.is_file():
-        matches = list(Path(src_root).rglob(Path(uri).name))
-        if not matches:
-            return None
-        candidate = matches[0]
-    try:
-        lines = candidate.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
-        return None
-    return lines[line - 1].rstrip() if 0 < line <= len(lines) else None
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Summarize a LintQ SARIF report.")
-    parser.add_argument("sarif", help="path to the .sarif file")
-    parser.add_argument("--src", help="source root, to show the flagged code lines")
-    parser.add_argument("--json", help="also write the cleaned findings to this JSON file")
-    args = parser.parse_args()
-
-    try:
-        sarif = load_sarif(args.sarif)
-    except (OSError, json.JSONDecodeError) as e:
-        sys.exit(f"Could not read {args.sarif}: {e}")
-
-    for run in sarif.get("runs", []):
-        rules = collect_rules(run)
-        findings = collect_findings(run)
-
-        by_rule = defaultdict(list)
-        for f in findings:
-            by_rule[f["rule"]].append(f)
-
-        print(f"Rules checked: {len(rules)}")
-        print(f"Findings (after removing duplicates): {len(findings)}\n")
-
-        print("Findings per rule")
-        print("-" * 60)
-        for rule_id, info in rules.items():
-            print(f"  {len(by_rule.get(rule_id, [])):>3}  {info['name']}  [{rule_id}]")
-
-        for rule_id, items in by_rule.items():
-            info = rules.get(rule_id, {})
-            print(f"\n{info.get('name', rule_id)}  ({info.get('severity', '?')})")
-            print(f"  {info.get('description', '')}")
-            for f in items:
-                print(f"\n  {f['file']}:{f['line']}")
-                print(f"    {f['message']}")
-                code = read_source_line(args.src, f["file"], f["line"])
-                if code is not None:
-                    print(f"    > {code.strip()}")
-
-        if args.json:
-            with open(args.json, "w", encoding="utf-8") as out:
-                json.dump(findings, out, indent=2)
-            print(f"\nWrote {len(findings)} findings to {args.json}")
-
-
-if __name__ == "__main__":
-    main()
+ 
+with open("data/datasets/demo/my_results.sarif") as f:
+    data = json.load(f)
+ 
+run = data["runs"][0]
+results = run["results"]
+artifacts = run["artifacts"]
+ 
+for artifact in artifacts:
+    file_name = artifact["location"]["uri"]
+    found_any = False
+ 
+    # look for errors that belong to this file
+    for r in results:
+        place = r["locations"][0]["physicalLocation"]
+        if place["artifactLocation"]["uri"] == file_name:
+            if found_any == False:
+                print(file_name, "- errors found:")
+                found_any = True
+            line = place["region"]["startLine"]
+            print("   line", line, "-", r["message"]["text"])
+ 
